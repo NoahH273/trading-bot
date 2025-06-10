@@ -1,0 +1,6 @@
+trading_course/
+.ipynb_checkpoints/
+**/secret.py
+.DS_Store
+__pycache__
+venv/

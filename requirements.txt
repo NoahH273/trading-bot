@@ -1,0 +1,9 @@
+jupyter==1.0.0
+jupyter-client==8.6.3
+jupyter-console==6.1.0
+jupyter-core==5.7.2
+numpy==2.2.6
+pandas==2.2.3
+requests==2.32.3
+scipy==1.15.3
+XlsxWriter==3.2.3
