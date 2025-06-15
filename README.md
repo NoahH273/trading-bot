@@ -1,0 +1,1 @@
+This project is for testing stock trading strategies on historical price data, and increasing my experience with databases and APIs
