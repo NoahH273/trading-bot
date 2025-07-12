@@ -1,6 +1,9 @@
-trading_course/
+Mongo_Legacy
 .ipynb_checkpoints/
-**/secret.py
+secret.py
 .DS_Store
 __pycache__
-venv/
+Data
+Data/*
+
+
