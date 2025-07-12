@@ -4,6 +4,5 @@ secret.py
 .DS_Store
 __pycache__
 Data
-Data/*
-
+venv
 
