@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "algorithmic-trading"
+version = "0.1.0"
+description = ""
+authors = ["Noah <nhymson9@icloud.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+polars = "^1.31.0"
+numpy = "^2.3.1"
+requests = "^2.32.4"
+notebook = "^7.4.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
