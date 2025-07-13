@@ -1,8 +1,7 @@
 Mongo_Legacy
 .ipynb_checkpoints/
-secret.py
 .DS_Store
 __pycache__
 Data
 venv
-
+secret.py
