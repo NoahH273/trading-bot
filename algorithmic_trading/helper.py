@@ -11,7 +11,7 @@ from secret import POLYGON_API_KEY
 class Helper:
     
     date_types = str|datetime.date|datetime.datetime|int|float
-    ticker_list_types = str|list|npt.NDArray[np.str_]|pl.DataFrame
+    str_list_types = str|list|npt.NDArray[np.str_]
 
     @staticmethod
     def get_paginated_request(request_url: str, df_schema: dict | None = None) ->  pl.DataFrame:
@@ -54,68 +54,53 @@ class Helper:
             format (str): The format to change the date to. Accepted strings are "isoformat", "date", and "timestamp".
 
         Raises:
-            TypeError: _description_
+            TypeError: If date is not a valid type
+            ValueError: If format is not a valid string
 
         Returns:
             converted_date: New date as str, datetime date object, or unix millisecond timestamp (int) depending on format arg.
         """
-        if isinstance(date, str):
-            try:
-                datetime.date.fromisoformat(date)
-                return date
-            except (ValueError, TypeError):
-                logging.exception('date string must be in isoformat: YYYY-MM-DD')
-        elif isinstance(date, int):
-            try:
+        if not isinstance(date, datetime.date):
+            if isinstance(date, str):
+                date = datetime.date.fromisoformat(date)       
+            elif isinstance(date, int):
                 date = datetime.date.fromtimestamp(date)
-                return date.isoformat()
-            except ValueError:
-                logging.exception('unix timestamp out of range')
-        elif isinstance(date, datetime.date):
+            elif isinstance(date, datetime.datetime):
+                date = date.date()
+            else:
+                raise TypeError('date must be isoformat date string, unix millisecond timestamp, date object, or datetime object')
+            
+        if format == 'date':
+            return date
+        elif format == 'isoformat':
             return date.isoformat()
-        elif isinstance(date, datetime.datetime):
-            return date.date().isoformat()
+        elif format == 'timestamp':
+            return date.timestamp()
         else:
-            raise TypeError('date must be isoformat date string, unix millisecond timestamp, date object, or datetime object')
+            raise ValueError(f'{format} invalid format argument. format must be "isoformat", "timestamp", or "date")')
     
     @staticmethod
-    def set_ticker_list(ticker_list: ticker_list_types = None) -> np.ndarray:
-        """Converts ticker list inputs of various formats to a Numpy string array.
+    def set_str_list(lst: str_list_types = None) -> npt.NDArray[np.str_]:
+        """Converts strings and string lists to a Numpy string array.
 
         Args:
-            ticker_list (str, list, Numpy array, polars dataframe): The input to be mutated to a Numpy array.
+            lst (str, list, numpy array): The input to be mutated to a Numpy array.
 
         Raises:
-            TypeError: _description_
-            TypeError: _description_
-            TypeError: _description_
+            TypeError: If lst is not a string, list, or numpy array with dtype string
 
         Returns:
             formatted_tickers: A Numpy array of ticker strings.
         """
-        if tickers == None:
-            return pl.read_parquet('Data/tickers.parquet').select(pl.col('ticker')).to_numpy()
-        elif isinstance(tickers, np.ndarray):
-            if tickers.dtype.type == str:
-                return tickers
-            else: raise TypeError('arg tickers must be an array of strings')
-        elif isinstance(tickers, str):
-            return np.array(tickers)
-        elif isinstance(tickers, list):
-            tickers = np.array(tickers)
-            if tickers.dtype.type == str:
-                return tickers
-            else: raise TypeError('arg tickers must be an array of strings')
-        elif isinstance(tickers, pl.dataframe.frame.DataFrame):
-            try:
-                arr = tickers.select(pl.col('ticker')).to_numpy()
-                return arr
-            except pl.dataframe.frame.ColumnNotFoundError:
-                logging.exception('the dataframe passed for tickers arg does not contain a column named "ticker"')
+        if isinstance(lst, np.ndarray):
+            if lst.dtype.type == str:
+                return lst
+            else: raise TypeError('arg lst must be an array of strings')
+        elif isinstance(lst, str) or isinstance(lst, list):
+            return np.array(lst)
         else:
-            raise TypeError('invalid tickers argument: must be of type string, string list, or polars dataframe with a "ticker" column. leave empty for all tickers')
+            raise TypeError('invalid lst argument: must be of type string, list, or numpy array')
 
-# if __name__ == '__main__':
-#     Helper.set_date()
-#     Helper.set_ticker_list()
-#     Helper.get_paginated_request()
+
+if __name__ == '__main__':
+    print(Helper.set_date(251235123523452345234523452345234523542345, 'isoformat'))

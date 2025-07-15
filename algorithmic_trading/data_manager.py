@@ -19,7 +19,7 @@ class DataManager:
         Returns:
             results_df: A Polars Dataframe with a row for each ticker with the schema: {'ticker': str, 'name': str, 'market': str, 'locale': str, 'primary_exchange': str, 'type': str, 'active': bool, 'currency_name': str, 'cik': str, 'last_updated_utc': str, 'delisted_utc': str, 'composite_figi': str, 'share_class_figi': str}
         """
-        ticker_types = Helper.set_ticker_list(ticker_types)
+        ticker_types = Helper.set_str_list(ticker_types)
         df_schema = {'ticker': str, 'name': str, 'market': str, 'locale': str, 'primary_exchange': str, 'type': str, 'active': bool, 'currency_name': str, 'cik': str, 'last_updated_utc': str, 'delisted_utc': str, 'composite_figi': str, 'share_class_figi': str}
         results_df = pl.DataFrame(schema = df_schema)
         
@@ -46,9 +46,9 @@ class DataManager:
             multiplier (int): A multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars.
 
         Raises:
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: 
+            ValueError: If start_date comes after end_date
+            ValueError: If timeframe arg is not a valid string
+            ValueError: If multiplier is not an integer greater than 0
         """
         if(end_date < start_date):
             raise ValueError('start_date must be earlier than end_date')
@@ -59,7 +59,7 @@ class DataManager:
             raise ValueError('multiplier must be an integer greater than 0')
         
     @staticmethod 
-    def get_data(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.ticker_list_types = None, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
+    def get_data(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.str_list_types = None, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
         """Gets historical ohlc bars.
 
         Args:
@@ -74,10 +74,12 @@ class DataManager:
         """
         start_date = Helper.set_date(start_date, 'isoformat')
         end_date = Helper.set_date(end_date, 'isoformat')
-        Helper.set_ticker_list(tickers)
+        if(tickers == None):
+            tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
+        else: tickers = Helper.set_str_list(tickers)
         DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)
         
         print(tickers)
 
 if __name__ == '__main__':
-    DataManager.get_historical_tickers()
+    a = [] + ['']
