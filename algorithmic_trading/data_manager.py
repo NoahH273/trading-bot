@@ -1,15 +1,17 @@
 import datetime
+import os
 
 import polars as pl
 
-from secret import POLYGON_API_KEY
-from helper import Helper
+# from secret import POLYGON_API_KEY
+from algorithmic_trading.helper import Helper
 
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
+
+print(POLYGON_API_KEY)
 class DataManager:
-
-
     @staticmethod
-    def get_historical_tickers(ticker_types: Helper.ticker_list_types = None, include_delisted: bool = True) -> pl.DataFrame:
+    def get_historical_tickers(ticker_types: Helper.str_list_types = None, include_delisted: bool = True) -> pl.DataFrame:
         """Retrieves data from the Polygon tickers endpoint.
 
         Args:

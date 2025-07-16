@@ -1,13 +1,13 @@
 import datetime
-import logging
 import time
+import os 
 
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 import requests
 
-from secret import POLYGON_API_KEY
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 class Helper:
     
     date_types = str|datetime.date|datetime.datetime|int|float
