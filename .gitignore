@@ -4,4 +4,3 @@ Mongo_Legacy
 __pycache__
 Data
 venv
-secret.py

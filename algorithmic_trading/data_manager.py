@@ -3,36 +3,39 @@ import os
 
 import polars as pl
 
-# from secret import POLYGON_API_KEY
 from algorithmic_trading.helper import Helper
 
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 
-print(POLYGON_API_KEY)
 class DataManager:
     @staticmethod
-    def get_historical_tickers(ticker_types: Helper.str_list_types = None, include_delisted: bool = True) -> pl.DataFrame:
+    def get_historical_tickers(ticker_types: Helper.str_list_types = None, include_delisted: bool = True, date: str = '') -> pl.DataFrame:
         """Retrieves data from the Polygon tickers endpoint.
 
         Args:
             ticker_types (str, list, numpy str array, polars dataframe with , optional): The ticker types to retrieve tickers for. Defaults to all, for a full list of valid types go to https://polygon.io/docs/rest/stocks/tickers/all-tickers.
             include_delisted (bool, optional): Whether or not to include delisted tickers. Defaults to True.
-
+            date (str, optional): The date to retrieve tickers for. Defaults to today.
         Returns:
             results_df: A Polars Dataframe with a row for each ticker with the schema: {'ticker': str, 'name': str, 'market': str, 'locale': str, 'primary_exchange': str, 'type': str, 'active': bool, 'currency_name': str, 'cik': str, 'last_updated_utc': str, 'delisted_utc': str, 'composite_figi': str, 'share_class_figi': str}
         """
         ticker_types = Helper.set_str_list(ticker_types)
+        if date != '':
+            date = Helper.set_date(date, 'isoformat').split('T')[0]
+            date = f"date={date}&"
+        if not isinstance(include_delisted, bool):
+            raise TypeError('include_delisted must be a boolean')
         df_schema = {'ticker': str, 'name': str, 'market': str, 'locale': str, 'primary_exchange': str, 'type': str, 'active': bool, 'currency_name': str, 'cik': str, 'last_updated_utc': str, 'delisted_utc': str, 'composite_figi': str, 'share_class_figi': str}
         results_df = pl.DataFrame(schema = df_schema)
         
         for ticker_type in ticker_types:
-            request_url = f'https://api.polygon.io/v3/reference/tickers?type={ticker_type}&market=stocks&active=true&order=asc&limit=1000&sort=ticker&apiKey={POLYGON_API_KEY}'
+            request_url = f'https://api.polygon.io/v3/reference/tickers?type={ticker_type}&market=stocks&{date}active=true&order=asc&limit=1000&sort=ticker&apiKey={POLYGON_API_KEY}'
+
             listed_df = Helper.get_paginated_request(request_url=request_url, df_schema=df_schema)
             results_df.vstack(listed_df, in_place=True)
-
             if not include_delisted:
                 continue
-            request_url = f'https://api.polygon.io/v3/reference/tickers?type={ticker_type}&market=stocks&active=false&order=asc&limit=1000&sort=ticker&apiKey={POLYGON_API_KEY}'
+            request_url = f'https://api.polygon.io/v3/reference/tickers?type={ticker_type}&market=stocks&{date}active=false&order=asc&limit=1000&sort=ticker&apiKey={POLYGON_API_KEY}'
             unlisted_df = Helper.get_paginated_request(request_url=request_url, df_schema=df_schema)
             results_df.vstack(unlisted_df, in_place=True)
         return results_df
@@ -76,12 +79,11 @@ class DataManager:
         """
         start_date = Helper.set_date(start_date, 'isoformat')
         end_date = Helper.set_date(end_date, 'isoformat')
-        if(tickers == None):
+        if tickers is None:
             tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
         else: tickers = Helper.set_str_list(tickers)
-        DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)
-        
+        DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)       
         print(tickers)
 
 if __name__ == '__main__':
-    a = [] + ['']
+    print('' is True)
