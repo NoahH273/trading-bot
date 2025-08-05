@@ -1,6 +1,7 @@
 import datetime
 import time
 import os
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -22,7 +23,7 @@ class Helper:
             df_schema ({str:Datatype} dict | None, optional): Defines the schema of the resulting Dataframe. No schema could cause errors in non-uniform data.
 
         Raises:
-            ValueError: If the HTTP request is unsuccessful.
+            ValueError: If the HTTP request is unsuccessful, or if the request returns no results.
 
         Returns:
             results_df: A Polars Dataframe with data from all pages of the HTTP request.
@@ -35,6 +36,8 @@ class Helper:
             time.sleep(70)
             request_response = requests.get(request_url, timeout=15)
             request_json = request_response.json()
+        if 'resultsCount' in request_json and request_json['resultsCount'] == 0:
+            raise ValueError(f'No results found for request: {request_url}')
         results_df = pl.DataFrame(schema=df_schema, data=request_json['results'])
 
         while 'next_url' in request_json:
@@ -53,7 +56,7 @@ class Helper:
 
         Args:
             date (str, datetime.date, datetime.datetime, int, float): The date to change the format of.
-            fmt (str): The format to change the date to. Accepted strings are "isoformat" and "datetime".
+            fmt (str): The format to change the date to. Accepted strings are "isoformat", "timestamp", and "datetime".
 
         Raises:
             TypeError: If date is not a valid type.
@@ -75,6 +78,8 @@ class Helper:
             return date
         elif fmt == 'isoformat':
             return date.isoformat()
+        elif fmt == 'timestamp':
+            return int(date.timestamp())
         else:
             raise ValueError(f'{format} invalid fmt argument. format must be "isoformat" or "datetime")')
     
@@ -102,6 +107,3 @@ class Helper:
         else:
             raise TypeError('invalid lst argument: must be of type string, list, or numpy array')
 
-
-if __name__ == '__main__':
-    print(isinstance(datetime.date.today(), datetime.datetime))

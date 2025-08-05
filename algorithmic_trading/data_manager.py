@@ -1,5 +1,6 @@
 import datetime
 import os
+import warnings
 
 import polars as pl
 
@@ -64,12 +65,12 @@ class DataManager:
             raise ValueError('multiplier must be an integer greater than 0')
         
     @staticmethod 
-    def get_data(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.str_list_types = None, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
+    def get_historical_ohlc(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.str_list_types = None, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
         """Gets historical ohlc bars.
 
         Args:
             start_date (str, date or datetime object, unix timestamp, optional): The day to start collecting ohlc bars from. Defaults to '2000-01-01'.
-            end_date (str, date or datetime object, unix timestamp, optional): The day to stop collecting ohlc bars. Defaults to today's date.
+            end_date (str, date or datetime object, unix timestamp, optional): The day to stop collecting ohlc bars. Defaults to today's date. When using isoformat to get one day's data for timeframes shorter than a day, end_date should be set to the next day.
             tickers (str, str list, numpy str array, optional): A list of stock tickers to collect ohlc bars for. Defaults to all tickers in history.
             timeframe (str, optional): The timeframe for each ohlc bar. Valid values are ['second', 'minute', 'hour', 'day', 'week', 'month', 'quarter', 'year']. Defaults to 'day'.
             multiplier (int, optional): The multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars. Defaults to 1.
@@ -77,13 +78,34 @@ class DataManager:
         Returns:
             data_df: A Polars Dataframe with timestamped ohlc bar data with a schema of {ticker: str, timestamp: str, o: float, h: float, l: float, c: float, v: float, vw: float, n: int, otc: bool, t: int}
         """
-        start_date = Helper.set_date(start_date, 'isoformat')
-        end_date = Helper.set_date(end_date, 'isoformat')
+        start_date = Helper.set_date(start_date, 'timestamp')
+        end_date = Helper.set_date(end_date, 'timestamp')
         if tickers is None:
             tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
         else: tickers = Helper.set_str_list(tickers)
-        DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)       
-        print(tickers)
+        DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)
 
-if __name__ == '__main__':
-    print('' is True)
+        df_schema = {'ticker': str, 'timestamp': str, 'o': float, 'h': float, 'l': float, 'c': float, 'v': float, 'vw': float, 'n': int, 'otc': bool, 't': int}
+        data_df = pl.DataFrame(schema=df_schema)
+        for ticker in tickers:
+            request_url = f'https://api.polygon.io/v2/aggs/ticker/{ticker}/range/{multiplier}/{timeframe}/{start_date}/{end_date}?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}'
+            ticker_df = Helper.get_paginated_request(request_url=request_url, df_schema=df_schema)
+            if ticker_df is None or ticker_df.height == 0:
+                warnings.warn(f'No data found for ticker {ticker} in the specified date range.')
+                continue
+            ticker_df = ticker_df.with_columns(pl.col("otc").fill_null(value=False))
+            ticker_df = ticker_df.with_columns(pl.col("ticker").fill_null(value=ticker))
+            ticker_df = ticker_df.with_columns(
+                  pl.col("t")
+                 .cast(pl.Datetime("ms", time_zone="UTC"))  
+                 .dt.strftime("%+")
+                 .alias("timestamp")
+            )
+            data_df.vstack(ticker_df, in_place=True)
+        if data_df.height == 0:
+            warnings.warn('No data found for the specified date range and tickers.')
+        
+
+        return data_df
+    
+
