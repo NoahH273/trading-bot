@@ -102,6 +102,8 @@ class Helper:
             most_common_delta (datetime.timedelta): The most common time delta between the timestamps.
         """
         timestamps = Helper.set_str_list(timestamps)
+        if len(timestamps) < 2:
+            raise ValueError('At least 2 timestamps are required to calculate a time delta')
         prev_timestamp = datetime.datetime.fromisoformat(timestamps[0])
         time_deltas = {}
         for timestamp in timestamps:

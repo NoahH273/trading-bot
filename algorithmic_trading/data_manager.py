@@ -1,6 +1,7 @@
 import datetime
 import os
 import warnings
+import math 
 
 import polars as pl
 
@@ -80,8 +81,6 @@ class DataManager:
         """
         start_date = Helper.set_date(start_date, 'timestamp', tz=datetime.timezone.utc)
         end_date = Helper.set_date(end_date, 'timestamp', tz=datetime.timezone.utc)
-        print(start_date)
-        print(end_date)
         if tickers is None:
             tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
         else: tickers = Helper.set_str_list(tickers)
@@ -110,15 +109,26 @@ class DataManager:
         return data_df
     
 
-
-
-    def post_historical_ohlc(data_df: pl.DataFrame):
+    def post_historical_ohlc(data_df: pl.DataFrame, ohlc_path: str, timeframe: str, multiplier: int) -> None:
         timestamps = data_df.unique('timestamp').get_column('timestamp').to_list()
-        timestamps.sort()
-        print(Helper.get_time_delta(timestamps))
-
+        folder_path = f'{ohlc_path}/{multiplier}_{timeframe}'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+        
+        for timestamp in timestamps:
+            timestamp_df = data_df.filter(pl.col('timestamp') == timestamp)
+            if timestamp_df.height == 0:
+                continue
+            date = Helper.set_date(timestamp, 'datetime', tz=datetime.timezone.utc).date().isoformat()
+            file_path = f'{folder_path}/{date}.parquet'
+            if os.path.exists(file_path):
+                existing_df = pl.read_parquet(file_path)
+                combined_df = pl.concat([existing_df, timestamp_df]).unique(subset=['timestamp', 'ticker'], keep='last')
+                combined_df.write_parquet(file_path)
+            else:
+                timestamp_df.write_parquet(file_path)
 
 if __name__ == "__main__":
     # Example usage
-    ohlc_df = DataManager.get_historical_ohlc(start_date='2025-01-02', end_date='2025-01-08', tickers=['AAPL', 'GOOGL'], timeframe='minute', multiplier=5)
-    DataManager.post_historical_ohlc(ohlc_df)
+    ohlc_df = DataManager.get_historical_ohlc(start_date='2024-01-02', end_date='2025-01-08', tickers=['AAPL', 'GOOGL'], timeframe='day', multiplier=1)
+    DataManager.post_historical_ohlc(ohlc_df, 'algorithmic_trading/Data/OHLC', 'day', 1)

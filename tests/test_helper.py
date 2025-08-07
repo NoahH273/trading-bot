@@ -111,3 +111,64 @@ if __name__ == '__main__':
 
 
     historical_ohlc_5_min.write_parquet("tests/Test-Data/get_historical_ohlc_day.parquet")
+
+@pytest.mark.parametrize(
+    "timestamps,expected,raises",
+    [
+        # Valid cases               
+        (['2024-01-01T00:00:00+00:00', '2024-01-02T00:00:00+00:00', '2024-01-03T00:00:00+00:00'], 
+         datetime.timedelta(days=1), None), #Daily timestamps
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T00:00:05+00:00', '2024-01-01T00:00:10+00:00'], 
+         datetime.timedelta(seconds=5), None), #5 second intervals
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T00:01:00+00:00', '2024-01-01T00:02:00+00:00'], 
+         datetime.timedelta(minutes=1), None), #1 minute intervals
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T01:00:00+00:00', '2024-01-01T02:00:00+00:00'],
+         datetime.timedelta(hours=1), None), #1 hour intervals
+        (['2024-01-01T00:00:00+00:00', '2024-01-02T00:00:00+00:00', '2024-01-03T00:00:00+00:00'], 
+         datetime.timedelta(days=1), None), #Daily timestamps with different dates
+        (['2024-01-01T12:00:00+00:00', '2024-01-01T12:30:00+00:00', '2024-01-01T13:00:00+00:00'], 
+         datetime.timedelta(minutes=30), None), #30 minute intervals
+        (['2024-01-01T12:15:30+00:00', '2024-01-01T12:16:30+00:00', '2024-01-01T12:17:30+00:00'], 
+         datetime.timedelta(seconds=60), None), #1 minute intervals with seconds
+        (['2024-01-01T12:15:30+00:00', '2024-01-01T12:15:31+00:00', '2024-01-01T12:15:32+00:00'], 
+         datetime.timedelta(seconds=1), None), #1 second intervals
+        (['2024-01-01T12:15:30+05:30', '2024-01-01T12:16:30+05:30', '2024-01-01T12:17:30+05:30'], 
+         datetime.timedelta(seconds=60), None), #1 minute intervals with timezone offset
+        (['2024-07-29T10:14:57.123456789Z', '2024-07-29T10:14:58.123456789Z', '2024-07-29T10:14:59.123456789Z'], 
+         datetime.timedelta(seconds=1), None), #High precision timestamps
+        (['2025-02-18T10:14Z', '2025-02-18T10:15Z', '2025-02-18T10:16Z'], 
+         datetime.timedelta(minutes=1), None), #Timestamps with 'Z' timezone
+        (['2024-01-01T00:00:00+00:00', '2024-01-02T00:00:00+00:00', '2024-01-03T00:00:00+00:00', '2024-01-04T00:00:00+00:00'], 
+         datetime.timedelta(days=1), None), #Multiple timestamps with same interval
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T00:00:05+00:00', '2024-01-01T00:00:10+00:00', '2024-01-01T00:00:15+00:00'], 
+         datetime.timedelta(seconds=5), None), #Multiple timestamps with same interval
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T00:01:00+00:00', '2024-01-01T00:02:00+00:00', '2024-01-01T00:03:00+00:00'], 
+         datetime.timedelta(minutes=1), None), #Multiple timestamps with same interval
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T01:00:00+00:00', '2024-01-01T02:00:00+00:00', '2024-01-01T03:00:00+00:00'], 
+         datetime.timedelta(hours=1), None), #Multiple timestamps with same interval
+        (['2024-01-01T00:00:00+00:00', '2024-01-01T00:30:00+00:00', '2024-01-01T01:00:00+00:00', '2024-01-01T01:30:00+00:00'], 
+         datetime.timedelta(minutes=30), None), #Multiple timestamps with same interval
+        (['2024-01-01T12:15:30+00:00', '2024-01-01T12:16:30+00:00', '2024-01-01T12:17:30+00:00'], 
+         datetime.timedelta(seconds=60), None), #Multiple timestamps with same interval
+        (['2024-01-01T12:15:30+00:00', '2024-01-01T12:15:31+00:00', '2024-01-01T12:15:32+00:00'], 
+         datetime.timedelta(seconds=1), None), #Multiple timestamps with same interval
+        (['2024-01-01T12:15:30+05:30', '2024-01-01T12:16:30+05:30', '2024-01-01T12:17:30+05:30'], 
+         datetime.timedelta(seconds=60), None), #Multiple timestamps with same interval with timezone offset
+        (['2024-07-29T10:14:57.123456789Z', '2024-07-29T10:14:58.123456789Z', '2024-07-29T10:14:59.123456789Z'], 
+         datetime.timedelta(seconds=1), None), #Multiple high precision timestamps with same interval
+        (['2025-02-18T10:14Z', '2025-02-18T10:15Z', '2025-02-18T10:16Z'], 
+         datetime.timedelta(minutes=1), None), #Multiple timestamps with 'Z' timezone with same interval
+        # Exception cases
+        ([], None, ValueError), #Empty list
+        (['2024-01-01T00:00:00+00:00', '2024-01-02T00:00:00+00:00', '2024-01-03T00:00:00+00:00', 'invalid_timestamp'], None, ValueError), #Invalid timestamp in list
+    ]
+)
+def test_get_time_delta(timestamps, expected, raises):
+    if raises:
+        with pytest.raises(raises):
+            Helper.get_time_delta(timestamps=timestamps)
+    else:
+        result = Helper.get_time_delta(timestamps=timestamps)
+        assert result == expected
+        assert isinstance(result, datetime.timedelta)
+        assert result.total_seconds() > 0  # Ensure the delta is positive    
