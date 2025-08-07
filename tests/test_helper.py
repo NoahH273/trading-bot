@@ -31,28 +31,29 @@ def test_get_paginated_request(request_url, df_schema, raises, expected):
         assert result.equals(expected) 
 
 @pytest.mark.parametrize(
-    "date,fmt,expected,raises",
+    "date,fmt,tz,expected,raises",
     [
         # Valid cases
-        (datetime.date(2020, 5, 1), 'isoformat', '2020-05-01T00:00:00', None), #Date to ISO format
-        ('2021-12-25T05:12:06', 'datetime', datetime.datetime(2021, 12, 25, 5, 12, 6), None), #ISO format to datetime
-        (datetime.datetime(2021, 10, 10), 'datetime', datetime.datetime(2021, 10, 10), None), #Datetime to datetime 
-        (1658105431.54, 'isoformat', '2022-07-17T17:50:31.540000', None), #Float unix timestamp to ISO format
-        (1620814598, 'datetime', datetime.datetime(2021, 5, 12, 3, 16, 38), None), #Integer unix timestamp to ISO format
-        (datetime.datetime(2024, 7, 29, 1, 14, 57), "timestamp", 1722240897, None), #Current datetime to timestamp
+        (datetime.date(2020, 5, 1), 'isoformat', datetime.timezone.utc, '2020-05-01T00:00:00+00:00', None), #Date to ISO format
+        ('2021-12-25T05:12:06+00:00', 'datetime', datetime.timezone.utc, datetime.datetime(2021, 12, 25, 5, 12, 6, tzinfo=datetime.timezone.utc), None), #ISO format to datetime
+        (datetime.datetime(2021, 10, 10), 'datetime', datetime.timezone.utc, datetime.datetime(2021, 10, 10, tzinfo=datetime.timezone.utc), None), #Datetime to datetime 
+        (1658105431.54, 'isoformat', datetime.timezone(datetime.timedelta(hours=-7)), '2022-07-17T17:50:31.540000-07:00', None), #Float unix timestamp to ISO format
+        (1620814598, 'datetime', datetime.timezone.utc, datetime.datetime(2021, 5, 12, 3, 16, 38, tzinfo=datetime.timezone.utc), None), #Integer unix timestamp to ISO format
+        (datetime.datetime(2024, 7, 29, 1, 14, 57, tzinfo=datetime.timezone.utc), "timestamp", datetime.timezone.utc, 1722215697000, None), #Current datetime to timestamp
         # Exception cases
-        (datetime.date(2025, 2, 18), 'wrong', None, ValueError), #Invalid format
-        ([], 'datetime', None, TypeError), #Invalid type
-        ('20345-2345-23', 'datetime', None, ValueError), #Wrongly formatted date string
-        (23521352152125123521351, 'isoformat', None, OverflowError) #Overflow error for large unix timestamp
+        (datetime.date(2025, 2, 18), 'wrong', datetime.timezone.utc, None, ValueError), #Invalid format
+        ([], 'datetime', datetime.timezone.utc, None, TypeError), #Invalid type
+        ('20345-2345-23', 'datetime', datetime.timezone.utc, None, ValueError), #Wrongly formatted date string
+        (23521352152125123521351, 'isoformat', datetime.timezone.utc, None, OverflowError), #Overflow error for large unix timestamp
+        (datetime.datetime(2024, 7, 29, 1, 14, 57, tzinfo=datetime.timezone.utc), "timestamp", "est", None, TypeError) #Invalid type for timestamp
     ]
 )
-def test_set_date(date, fmt, expected, raises):
+def test_set_date(date, fmt, tz, expected, raises):
     if raises:
         with pytest.raises(raises):
-            Helper.set_date(date=date, fmt=fmt)
+            Helper.set_date(date=date, fmt=fmt, tz=tz)
     else:
-        result = Helper.set_date(date=date, fmt=fmt)
+        result = Helper.set_date(date=date, fmt=fmt, tz=tz)
         assert result == expected
 
 

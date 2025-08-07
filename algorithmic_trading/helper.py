@@ -51,19 +51,22 @@ class Helper:
         return results_df
 
     @staticmethod
-    def set_date(date: date_types, fmt: str) -> date_types:
+    def set_date(date: date_types, fmt: str, tz: datetime.tzinfo = datetime.timezone.utc) -> date_types:
         """Converts dates between different formats.
 
         Args:
             date (str, datetime.date, datetime.datetime, int, float): The date to change the format of.
             fmt (str): The format to change the date to. Accepted strings are "isoformat", "timestamp", and "datetime".
+            tz (datetime.tzinfo, optional): The timezone in which to return the new date. Defaults to UTC. If the input date does not have a timezone and tz is not the same as loca timezone, the date's naive value will be changed.
 
         Raises:
             TypeError: If date is not a valid type.
             ValueError: If format is not a valid string, or isoformat date string is not in the correct format.
             OverflowError: If the unix timestamp is too large to convert to a date.
+
         Returns:
-            converted_date: New date as str or datetime date object depending on fmt."""
+            converted_date: New date as str or datetime date object depending on fmt.
+        """
         if not isinstance(date, datetime.datetime):
             if isinstance(date, str):
                 date = datetime.datetime.fromisoformat(date)       
@@ -73,15 +76,50 @@ class Helper:
                 date = datetime.datetime.combine(date, datetime.time(0, 0, 0, 0))
             else:
                 raise TypeError('date must be isoformat date string, unix millisecond timestamp, date object, or datetime object')
-            
+        
+        if date.tzinfo is None or date.tzinfo != tz:
+            date = date.replace(tzinfo=tz)
+        elif date.tzinfo != tz:
+            date = date.astimezone(tz)
+
         if fmt == 'datetime':
             return date
         elif fmt == 'isoformat':
             return date.isoformat()
         elif fmt == 'timestamp':
-            return int(date.timestamp())
+            return int(date.timestamp() * 1000)
         else:
             raise ValueError(f'{format} invalid fmt argument. format must be "isoformat" or "datetime")')
+    
+    @staticmethod
+    def get_time_delta(timestamps: str_list_types) -> datetime.timedelta:
+        """Calculates the most common time delta between a list of timestamps.
+
+        Args:
+            timestamps (str, list, numpy str array): A list of timestamps in isoformat string format.
+        
+        Returns:
+            most_common_delta (datetime.timedelta): The most common time delta between the timestamps.
+        """
+        timestamps = Helper.set_str_list(timestamps)
+        prev_timestamp = datetime.datetime.fromisoformat(timestamps[0])
+        time_deltas = {}
+        for timestamp in timestamps:
+            current_timestamp = datetime.datetime.fromisoformat(timestamp)
+            time_delta = current_timestamp - prev_timestamp
+            if time_delta in time_deltas:
+                time_deltas[time_delta] += 1
+            else:
+                time_deltas[time_delta] = 1
+            prev_timestamp = current_timestamp
+        
+        highest_count = 0
+        most_common_delta = None
+        for time_delta, count in time_deltas.items():
+            if count > highest_count:
+                highest_count = count
+                most_common_delta = time_delta
+        return most_common_delta
     
     @staticmethod
     def set_str_list(lst: str_list_types) -> npt.NDArray[np.str_]:

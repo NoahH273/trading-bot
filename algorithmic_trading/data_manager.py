@@ -69,8 +69,8 @@ class DataManager:
         """Gets historical ohlc bars.
 
         Args:
-            start_date (str, date or datetime object, unix timestamp, optional): The day to start collecting ohlc bars from. Defaults to '2000-01-01'.
-            end_date (str, date or datetime object, unix timestamp, optional): The day to stop collecting ohlc bars. Defaults to today's date. When using isoformat to get one day's data for timeframes shorter than a day, end_date should be set to the next day.
+            start_date (str, date or datetime object, unix timestamp, optional): The day to start collecting ohlc bars from. Defaults to '2000-01-01'. With timeframes >= 1 day, start date must be hour 4 utc of that day, or the previous day/week/month bar will be returned as well.
+            end_date (str, date or datetime object, unix timestamp, optional): The day to stop collecting ohlc bars. Defaults to today's date. With timeframes >= 1 day, if end date has an hour later than or at 4 utc, the next day/week/month bar will be returned as well.
             tickers (str, str list, numpy str array, optional): A list of stock tickers to collect ohlc bars for. Defaults to all tickers in history.
             timeframe (str, optional): The timeframe for each ohlc bar. Valid values are ['second', 'minute', 'hour', 'day', 'week', 'month', 'quarter', 'year']. Defaults to 'day'.
             multiplier (int, optional): The multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars. Defaults to 1.
@@ -78,8 +78,10 @@ class DataManager:
         Returns:
             data_df: A Polars Dataframe with timestamped ohlc bar data with a schema of {ticker: str, timestamp: str, o: float, h: float, l: float, c: float, v: float, vw: float, n: int, otc: bool, t: int}
         """
-        start_date = Helper.set_date(start_date, 'timestamp')
-        end_date = Helper.set_date(end_date, 'timestamp')
+        start_date = Helper.set_date(start_date, 'timestamp', tz=datetime.timezone.utc)
+        end_date = Helper.set_date(end_date, 'timestamp', tz=datetime.timezone.utc)
+        print(start_date)
+        print(end_date)
         if tickers is None:
             tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
         else: tickers = Helper.set_str_list(tickers)
@@ -97,15 +99,26 @@ class DataManager:
             ticker_df = ticker_df.with_columns(pl.col("ticker").fill_null(value=ticker))
             ticker_df = ticker_df.with_columns(
                   pl.col("t")
-                 .cast(pl.Datetime("ms", time_zone="UTC"))  
+                 .cast(pl.Datetime("ms", time_zone=("UTC")))  
                  .dt.strftime("%+")
                  .alias("timestamp")
             )
             data_df.vstack(ticker_df, in_place=True)
         if data_df.height == 0:
             warnings.warn('No data found for the specified date range and tickers.')
-        
-
+    
         return data_df
     
 
+
+
+    def post_historical_ohlc(data_df: pl.DataFrame):
+        timestamps = data_df.unique('timestamp').get_column('timestamp').to_list()
+        timestamps.sort()
+        print(Helper.get_time_delta(timestamps))
+
+
+if __name__ == "__main__":
+    # Example usage
+    ohlc_df = DataManager.get_historical_ohlc(start_date='2025-01-02', end_date='2025-01-08', tickers=['AAPL', 'GOOGL'], timeframe='minute', multiplier=5)
+    DataManager.post_historical_ohlc(ohlc_df)
