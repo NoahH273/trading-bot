@@ -1,7 +1,8 @@
 import datetime
 import os
 import warnings
-import math 
+import numpy as np
+from tqdm import tqdm
 
 import polars as pl
 
@@ -43,12 +44,10 @@ class DataManager:
         return results_df
     
     @staticmethod
-    def __get_data_input_validator(start_date: str, end_date: str, timeframe: str, multiplier: int) -> None:
-        """Helper function for get_data, validates input types and values
+    def __ohlc_input_validator(timeframe: str, multiplier: int) -> None:
+        """Helper function for functions dealing with ohlc data, validates timeframe and multiplier inputs used for polygon requests and file naming.
 
         Args:
-            start_date (str): The start date to collect data for each stock
-            end_date (str): The end date to collect data for each stock.
             timeframe (str): The timeframe for each ohlc bar to be collected.
             multiplier (int): A multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars.
 
@@ -57,8 +56,6 @@ class DataManager:
             ValueError: If timeframe arg is not a valid string
             ValueError: If multiplier is not an integer greater than 0
         """
-        if(end_date < start_date):
-            raise ValueError('start_date must be earlier than end_date')
         valid_timeframes = {'hour', 'day', 'minute', 'week', 'month', 'quarter', 'year', 'second'}
         if timeframe not in valid_timeframes:
             raise ValueError(f'invalid timeframe argument, must be one of {valid_timeframes}.')
@@ -66,13 +63,14 @@ class DataManager:
             raise ValueError('multiplier must be an integer greater than 0')
         
     @staticmethod 
-    def get_historical_ohlc(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.str_list_types = None, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
+    def get_historical_ohlc(start_date: Helper.date_types = '2000-01-01', end_date: Helper.date_types = datetime.date.today(), tickers: Helper.str_list_types = None, use_ticker_types: bool = False, timeframe: str = 'day', multiplier: int = 1) -> pl.DataFrame:
         """Gets historical ohlc bars.
 
         Args:
             start_date (str, date or datetime object, unix timestamp, optional): The day to start collecting ohlc bars from. Defaults to '2000-01-01'. With timeframes >= 1 day, start date must be hour 4 utc of that day, or the previous day/week/month bar will be returned as well.
             end_date (str, date or datetime object, unix timestamp, optional): The day to stop collecting ohlc bars. Defaults to today's date. With timeframes >= 1 day, if end date has an hour later than or at 4 utc, the next day/week/month bar will be returned as well.
             tickers (str, str list, numpy str array, optional): A list of stock tickers to collect ohlc bars for. Defaults to all tickers in history.
+            use_ticker_types (bool, optional): If True, uses the tickers arg as ticker types instead of tickers. Defaults to False.
             timeframe (str, optional): The timeframe for each ohlc bar. Valid values are ['second', 'minute', 'hour', 'day', 'week', 'month', 'quarter', 'year']. Defaults to 'day'.
             multiplier (int, optional): The multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars. Defaults to 1.
 
@@ -81,16 +79,27 @@ class DataManager:
         """
         start_date = Helper.set_date(start_date, 'timestamp', tz=datetime.timezone.utc)
         end_date = Helper.set_date(end_date, 'timestamp', tz=datetime.timezone.utc)
+        if(end_date < start_date):
+            raise ValueError('start_date must be earlier than end_date')
         if tickers is None:
-            tickers = pl.read_parquet('Data/ticker_list.parquet').select(pl.col('ticker')).to_numpy()
-        else: tickers = Helper.set_str_list(tickers)
-        DataManager.__get_data_input_validator(start_date, end_date, timeframe, multiplier)
+            tickers = pl.read_parquet('algorithmic_trading/Data/tickers.parquet').select(pl.col('ticker')).to_series().to_numpy() #Gets all tickers in history
+        elif use_ticker_types:
+            tickers = set(Helper.set_str_list(tickers))
+            ticker_df = pl.read_parquet('algorithmic_trading/Data/tickers.parquet')
+            ticker_df = ticker_df.filter(pl.col('type').is_in(tickers))
+            tickers = ticker_df.select(pl.col('ticker')).to_series().unique()
+            tickers = tickers.to_numpy().astype(np.str_)
+        tickers = Helper.set_str_list(tickers)
+        DataManager.__ohlc_input_validator(timeframe, multiplier)
 
         df_schema = {'ticker': str, 'timestamp': str, 'o': float, 'h': float, 'l': float, 'c': float, 'v': float, 'vw': float, 'n': int, 'otc': bool, 't': int}
         data_df = pl.DataFrame(schema=df_schema)
-        for ticker in tickers:
+        for ticker in tqdm(tickers):
+            if "/" in ticker:
+                warnings.warn(f'Ticker {ticker} contains a slash, which is not supported by the Polygon API. Skipping this ticker.')
+                continue
             request_url = f'https://api.polygon.io/v2/aggs/ticker/{ticker}/range/{multiplier}/{timeframe}/{start_date}/{end_date}?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}'
-            ticker_df = Helper.get_paginated_request(request_url=request_url, df_schema=df_schema)
+            ticker_df = Helper.get_paginated_request(request_url=request_url, df_schema=df_schema, safe=False)
             if ticker_df is None or ticker_df.height == 0:
                 warnings.warn(f'No data found for ticker {ticker} in the specified date range.')
                 continue
@@ -103,6 +112,7 @@ class DataManager:
                  .alias("timestamp")
             )
             data_df.vstack(ticker_df, in_place=True)
+            print(f"Collected data for ticker: {ticker}")
         if data_df.height == 0:
             warnings.warn('No data found for the specified date range and tickers.')
     
@@ -110,6 +120,21 @@ class DataManager:
     
 
     def post_historical_ohlc(data_df: pl.DataFrame, ohlc_path: str, timeframe: str, multiplier: int) -> None:
+        """Posts historical ohlc data to parquet files.
+
+        Args:
+            data_df (pl.DataFrame): A Polars DataFrame with ohlc data to post. Schemas are not enforced to provide support for technical indicators.
+            ohlc_path (str): The path to the folder where the parquet files will be saved. This can be a relative or absolute path, but the folder must exist before posting data, and the actual data will be contained in a subdirectory based on the timeframe and multiplier.
+            timeframe (str): The timeframe for the ohlc data. Valid values are ['second', 'minute', 'hour', 'day', 'week', 'month', 'quarter', 'year']. Unexpected behavior may occur if the timeframe passed is not the same as the timeframe used to collect the data in data_df.
+            multiplier (int): The multiplier for the timeframe. Ex: A multiplier of 5 and timeframe of "minute" makes 5 minute bars. Unexpected behavior may occur if the multiplier passed is not the same as the multiplier used to collect the data in data_df.
+
+        Raises:
+            ValueError: If timeframe is not a valid string.
+            ValueError: If multiplier is not an integer greater than 0.
+        """
+        if not os.path.exists(ohlc_path):
+            raise ValueError(f'Path {ohlc_path} does not exist. Please create the directory before posting data.')
+        DataManager.__ohlc_input_validator(timeframe, multiplier)
         timestamps = data_df.unique('timestamp').get_column('timestamp').to_list()
         folder_path = f'{ohlc_path}/{multiplier}_{timeframe}'
         if not os.path.exists(folder_path):
@@ -123,12 +148,11 @@ class DataManager:
             file_path = f'{folder_path}/{date}.parquet'
             if os.path.exists(file_path):
                 existing_df = pl.read_parquet(file_path)
-                combined_df = pl.concat([existing_df, timestamp_df]).unique(subset=['timestamp', 'ticker'], keep='last')
+                combined_df = pl.concat([existing_df, timestamp_df], how="diagonal_relaxed").unique(subset=['timestamp', 'ticker'], keep='last')
                 combined_df.write_parquet(file_path)
             else:
                 timestamp_df.write_parquet(file_path)
 
 if __name__ == "__main__":
-    # Example usage
-    ohlc_df = DataManager.get_historical_ohlc(start_date='2024-01-02', end_date='2025-01-08', tickers=['AAPL', 'GOOGL'], timeframe='day', multiplier=1)
-    DataManager.post_historical_ohlc(ohlc_df, 'algorithmic_trading/Data/OHLC', 'day', 1)
+    ohlc_df = DataManager.get_historical_ohlc(start_date='2020-05-02', end_date='2025-08-06', tickers='CS', use_ticker_types=True, timeframe='hour', multiplier=1)
+    DataManager.post_historical_ohlc(data_df=ohlc_df, ohlc_path = 'algorithmic_trading/Data/OHLC', timeframe = 'hour', multiplier = 1)
