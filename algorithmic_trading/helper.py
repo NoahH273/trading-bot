@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 class Helper:
@@ -15,13 +16,14 @@ class Helper:
     str_list_types = str|list|npt.NDArray[np.str_]
 
     @staticmethod
-    def get_paginated_request(request_url: str, df_schema: dict | None = None, safe = True) ->  pl.DataFrame:
+    def get_paginated_request(request_url: str, df_schema: dict | None = None, safe: bool = True, session: requests.Session = None) ->  pl.DataFrame:
         """Returns all data from a Polygon API request in one Polars Dataframe.
 
         Args:
             request_url (str): URL for the HTTP request.
             df_schema ({str:Datatype} dict | None, optional): Defines the schema of the resulting Dataframe. No schema could cause errors in non-uniform data.
             safe (bool, optional): If True, raises an error if the request fails or times out. If False, returns an empty DataFrame with the specified schema, and gives a warning. Defaults to True.
+            session (requests.Session, optional): A requests Session object to use for the HTTP requests. If None, a new Session will be created. Defaults to None.
 
         Raises:
             ValueError: If the HTTP request is unsuccessful, or if the request returns no results.
@@ -29,20 +31,14 @@ class Helper:
         Returns:
             results_df: A Polars Dataframe with data from all pages of the HTTP request.
         """
-        request_response = None
-        try:
-            request_response = requests.get(request_url, timeout=15, allow_redirects=)
-        except requests.exceptions.ReadTimeout:
-            warnings.warn(f'http request timed out: {request_url}. Waiting 70 seconds and retrying...')
-            time.sleep(70)
-            try:
-                request_response = requests.get(request_url, timeout=15)
-            except requests.exceptions.ReadTimeout:
-                if safe:
-                    raise ValueError(f'http request timed out again: {request_url}')
-                else:
-                    warnings.warn(f'http request timed out again: {request_url}')
-                    return pl.DataFrame(schema=df_schema)
+        if session is None:
+            session = requests.Session()
+            retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504], raise_on_redirect=True)
+            adapter = HTTPAdapter(max_retries=retries)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+        request_response = session.get(request_url, timeout=15)
         if request_response.status_code != 200:
             if safe:
                 raise ValueError(f'http request failed: {request_url}')
@@ -61,19 +57,7 @@ class Helper:
 
         while 'next_url' in request_json:
             request_url = f'{request_json['next_url']}&apiKey={POLYGON_API_KEY}'
-            try:
-                request_json = requests.get(request_url, timeout=15).json()
-            except requests.exceptions.ReadTimeout:
-                warnings.warn(f'http request timed out: {request_url}. Waiting 70 seconds and retrying...')
-                time.sleep(70)
-                try:
-                    request_json = requests.get(request_url, timeout=15).json()
-                except requests.exceptions.ReadTimeout:
-                    if safe:
-                        raise ValueError(f'http request timed out again: {request_url}')
-                    else:
-                        warnings.warn(f'http request timed out again: {request_url}')
-                        return results_df
+            request_json = session.get(request_url, timeout=15).json()
             if request_json['status'] == 'ERROR':
                 time.sleep(70)
                 request_json= requests.get(request_url, timeout=15).json()
